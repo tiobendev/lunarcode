@@ -2,17 +2,18 @@ import { Ollama } from "ollama";
 
 const ollama = new Ollama();
 
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 export async function chat(
   model: string,
-  systemPrompt: string,
-  userMessage: string
+  messages: ChatMessage[]
 ): Promise<string> {
   const response = await ollama.chat({
     model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
+    messages,
   });
 
   return response.message.content;
@@ -20,16 +21,12 @@ export async function chat(
 
 export async function streamChat(
   model: string,
-  systemPrompt: string,
-  userMessage: string,
+  messages: ChatMessage[],
   onChunk: (chunk: string) => void
 ): Promise<string> {
   const stream = await ollama.chat({
     model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
+    messages,
     stream: true,
   });
 
@@ -41,4 +38,12 @@ export async function streamChat(
   }
 
   return full;
+}
+
+export async function getEmbeddings(model: string, prompt: string): Promise<number[]> {
+  const response = await ollama.embeddings({
+    model,
+    prompt,
+  });
+  return response.embedding;
 }

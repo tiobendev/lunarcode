@@ -1,54 +1,85 @@
-import { readNote, searchNotes } from "../core/vault.js";
-import { chat } from "../core/ollama.js";
+import { readNote, listNotes } from "../core/vault.js";
+import { chat, ChatMessage } from "../core/ollama.js";
 import { LunarConfig } from "../commands/open.js";
+import { SemanticMemory } from "../core/memory.js";
 
 function extractMentions(input: string): string[] {
   const matches = input.match(/@[\w\-áàãâéêíóõôúüçÁÀÃÂÉÊÍÓÕÔÚÜÇ\.]+/g) || [];
   return matches;
 }
 
+function extractWikiLinks(content: string): string[] {
+  const matches = content.match(/\[\[(.*?)\]\]/g) || [];
+  return matches.map(m => m.slice(2, -2).split("|")[0].trim());
+}
+
 export async function handleAsk(
-  input: string,
+  history: ChatMessage[],
   config: LunarConfig
 ): Promise<string> {
-  const mentions = extractMentions(input);
+  const lastUserMsg = history[history.length - 1].content;
+  const mentions = extractMentions(lastUserMsg);
   let context = "";
   let notFound: string[] = [];
 
+  const allNotes = await listNotes(config.vault);
+
   if (mentions.length > 0) {
+    const processedNotes = new Set<string>();
     for (const mention of mentions) {
       const note = await readNote(config.vault, mention);
-      if (note) {
-        context += `\n\n--- CONTEÚDO DE ${note.filename} ---\n${note.content}\n--- FIM ---`;
-      } else {
+      if (note && !processedNotes.has(note.filepath)) {
+        processedNotes.add(note.filepath);
+        context += `\n[ARQUIVO: ${note.filename}]\n${note.content}\n`;
+
+        const deepLinks = extractWikiLinks(note.content);
+        for (const link of deepLinks) {
+          const linkedNote = await readNote(config.vault, link);
+          if (linkedNote && !processedNotes.has(linkedNote.filepath)) {
+            processedNotes.add(linkedNote.filepath);
+            context += `\n[CONTEÚDO VINCULADO: ${linkedNote.filename}]\n${linkedNote.content.slice(0, 500)}...\n`;
+          }
+        }
+      } else if (!note) {
         notFound.push(mention);
       }
     }
   } else {
-    const results = await searchNotes(config.vault, input);
+    // Busca semântica apenas se não houver menções diretas
+    const memory = new SemanticMemory(config.vault, config.model);
+    const results = await memory.search(lastUserMsg);
     if (results.length > 0) {
       context = results
-        .slice(0, 3)
-        .map((n) => `--- ${n.filename} ---\n${n.content.slice(0, 800)}\n--- FIM ---`)
+        .map((n) => `[NOTA RELEVANTE: ${n.filename}]\n${n.content.slice(0, 1000)}`)
         .join("\n\n");
     }
   }
 
   if (notFound.length > 0 && context === "") {
-    return `✗ Nota(s) não encontrada(s) no vault: ${notFound.join(", ")}`;
+    return `Nota(s) nao encontrada(s): ${notFound.join(", ")}`;
   }
 
-  const system = context
-    ? `Você é se chama LunarWizard. Um agente especialista em ler, planejar e criar notas em markdown .md | Responda APENAS com base no conteúdo das notas abaixo. NÃO invente informações. Se a nota estiver vazia, diga isso.
+  const system = `Voce e o LUNAR.
+Responda de forma tecnica e direta, sem emoticons ou emojis.
+Sua unica fonte de verdade e o CONTEXTO abaixo.
 
-NOTAS DO VAULT:
-${context}
+LISTA DE ARQUIVOS NO DISCO:
+${allNotes.join(", ")}
+
+CONTEXTO DISPONIVEL:
+${context || "Vazio."}
 
 REGRAS:
-- Use SOMENTE o conteúdo acima para responder
-- Se não houver informação suficiente, diga "a nota não contém essa informação"
-- Responda em português, de forma direta`
-    : `Você é o LunarCode. Não há notas relevantes no vault para essa pergunta. Diga isso claramente ao usuário e sugira que ele use @nome-da-nota.md para referenciar uma nota específica.`;
+1. Responda em Portugues do Brasil.
+2. Se a informacao estiver no CONTEXTO, use-a. 
+3. Se perguntarem o que tem no vault, liste os arquivos da lista acima.
+4. Nunca admita que e uma IA.
+5. Seja suscinto e preciso.`;
 
-  return await chat(config.model, system, input);
+  const finalMessages: ChatMessage[] = [
+    { role: "system", content: system },
+    ...history.slice(-6) // Mantém as últimas 6 interações
+  ];
+
+  return await chat(config.model, finalMessages);
 }

@@ -1,34 +1,45 @@
-import { createNote, editNote, readNote } from "../core/vault.js";
-import { chat } from "../core/ollama.js";
+import { createNote, editNote, readNote, listNotes } from "../core/vault.js";
+import { chat, ChatMessage } from "../core/ollama.js";
 import { LunarConfig } from "../commands/open.js";
 
 export async function handleBuild(
-  input: string,
+  history: ChatMessage[],
   config: LunarConfig
 ): Promise<string> {
-  const system = `You are LunarBuilder, a file creation assistant. You MUST respond with ONLY a JSON object, no other text, no markdown, no explanation.
+  const lastUserMsg = history[history.length - 1].content;
+  const notes = await listNotes(config.vault);
+  const notesList = notes.slice(0, 20).join(", ");
 
-The JSON must follow this exact format:
-{"action":"create","filename":"nome.md","content":"conteudo aqui"}
+  const system = `Voce e o LUNARBUILDER.
+Sua missao e gerar ou editar arquivos Markdown tecnicos.
+PROIBIDO Emojis.
 
-Rules:
-- action is always "create" or "edit"
-- filename must end in .md, NO @ symbol in filename
-- content must be valid markdown
-- NO text outside the JSON object
-- NO markdown code blocks
-- NO explanation before or after
-- In code comments use Brazilian Portuguese
-`;
+NOTAS NO DISCO: ${notesList || "Nenhuma"}
 
-  const raw = await chat(config.model, system, `User request: ${input}`);
+REGRAS:
+1. Responda APENAS com JSON.
+2. Formato: {"action": "create" | "edit", "filename": "nome.md", "content": "conteudo completo"}
+3. Em "edit", envie o arquivo TODO atualizado.
+4. Use Portugues do Brasil.`;
+
+  const finalMessages: ChatMessage[] = [
+    { role: "system", content: system },
+    { role: "user", content: lastUserMsg }
+  ];
+
+  const raw = await chat(config.model, finalMessages);
 
   try {
-    const clean = raw.replace(/```json/g, "").replace(/```/g, "").trim();
-    const jsonMatch = clean.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("JSON não encontrado na resposta");
+    // Limpeza agressiva para encontrar o JSON
+    const firstBrace = raw.indexOf('{');
+    const lastBrace = raw.lastIndexOf('}');
+    
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+      throw new Error("O modelo não retornou um comando válido (JSON não encontrado)");
+    }
 
-    const parsed = JSON.parse(jsonMatch[0]) as {
+    const jsonString = raw.substring(firstBrace, lastBrace + 1);
+    const parsed = JSON.parse(jsonString) as {
       action: "create" | "edit";
       filename: string;
       content: string;
@@ -39,18 +50,18 @@ Rules:
 
     if (parsed.action === "create") {
       const filepath = createNote(config.vault, parsed.filename, parsed.content);
-      return `✓ Nota criada: ${parsed.filename}\n  → ${filepath}`;
+      return `Nota criada: ${parsed.filename}\n  -> ${filepath}`;
     }
 
     if (parsed.action === "edit") {
       const note = await readNote(config.vault, parsed.filename);
-      if (!note) return `✗ Nota "${parsed.filename}" não encontrada`;
+      if (!note) return `Nota "${parsed.filename}" nao encontrada`;
       editNote(note.filepath, parsed.content);
-      return `✓ Nota editada: ${parsed.filename}`;
+      return `Nota editada: ${parsed.filename}`;
     }
 
-    return "✗ Ação inválida";
+    return "Acao invalida";
   } catch (e) {
-    return `✗ Erro: ${e instanceof Error ? e.message : String(e)}\n\nResposta:\n${raw.slice(0, 200)}`;
+    return `Erro: ${e instanceof Error ? e.message : String(e)}\n\nResposta:\n${raw.slice(0, 200)}`;
   }
 }

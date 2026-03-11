@@ -2,6 +2,7 @@
 import { program } from "commander";
 import { initCommand } from "./commands/init.js";
 import { openCommand } from "./commands/open.js";
+import { indexCommand } from "./commands/index.js";
 
 program
   .name("lunarcode")
@@ -18,4 +19,8 @@ program
   .description("Open LunarCode terminal")
   .action(openCommand);
 
+program
+  .command("index")
+  .description("Index your vault for semantic search")
+  .action(indexCommand);
 program.parse();

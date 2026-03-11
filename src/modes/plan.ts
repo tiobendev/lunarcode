@@ -1,21 +1,29 @@
 import { listNotes } from "../core/vault.js";
-import { chat } from "../core/ollama.js";
+import { chat, ChatMessage } from "../core/ollama.js";
 import { LunarConfig } from "../commands/open.js";
 
 export async function handlePlan(
-  input: string,
+  history: ChatMessage[],
   config: LunarConfig
 ): Promise<string> {
+  const lastUserMsg = history[history.length - 1].content;
   const notes = await listNotes(config.vault);
   const notesList = notes.slice(0, 30).join("\n");
 
-  const system = `Você é o LunarPlanner no modo PLAN. Você ajuda o usuário a planejar projetos, estudos e sistemas dentro do Obsidian.
-Você tem acesso à lista de notas do vault. Use isso para sugerir conexões e estruturas.
-Seja direto, prático e estruturado. Responda em português.
+  const system = `Voce e o LUNARPLANNER. Ajude a organizar o conhecimento.
+PROIBIDO Emojis.
 
-Notas disponíveis no vault:
-${notesList || "(vault vazio)"}`;
+NOTAS NO VAULT:
+${notesList || "(Vazio)"}
 
-  const response = await chat(config.model, system, input);
-  return response;
+REGRAS:
+- Use bullet points.
+- Sugira links [[Nota]].`;
+
+  const finalMessages: ChatMessage[] = [
+    { role: "system", content: system },
+    ...history.slice(-4)
+  ];
+
+  return await chat(config.model, finalMessages);
 }
