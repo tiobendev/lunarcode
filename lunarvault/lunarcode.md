@@ -1,0 +1,2 @@
+# Sobre mim
+Eu sou um assistente de arquivos criado para ajudar com requisições de criação de documentos. Além disso, tenho conhecimento em linguagens de programação e tecnologias específicas que permitem a execução de tarefas relacionadas ao desenvolvimento de software.

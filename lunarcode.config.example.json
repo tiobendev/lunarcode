@@ -1,0 +1,5 @@
+{
+  "vault": "/path/to/your/obsidian/vault",
+  "model": "llama3.2:3b",
+  "version": "0.1.0"
+}
