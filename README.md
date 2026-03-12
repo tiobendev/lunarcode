@@ -1,4 +1,5 @@
 # LunarCode v0.2.1
+<img width="1146" height="705" alt="Screenshot from 2026-03-11 20-55-12" src="https://github.com/user-attachments/assets/58bd1f37-8df7-46c6-af51-724b5352b8a1" />
 
 O LunarCode e um agente de linha de comando (CLI) criado para transformar suas notas em Markdown em uma base de conhecimento inteligente. Ele utiliza o Ollama para processar todas as informacoes localmente, garantindo que seus dados nunca saiam da sua maquina.
 
